@@ -1,9 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NuGet.Common;
+using NuGet.Configuration;
 using NuGet.Packaging.Core;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
@@ -13,7 +15,7 @@ namespace nuget_mirror
 {
     class Program
     {
-        // Usage nuget-mirror -package {package} -source {sourceV3Api} -destination {destinationV3Api} -apikey {apikey}
+        // Usage nuget-mirror -package {package} -source {sourceName} -destination {destinationName} -apikey {apikey}
 
         static async Task Main(string[] args)
         {
@@ -21,30 +23,29 @@ namespace nuget_mirror
             {
                 var commandLineParser = new SimpleCommandLineParser();
                 commandLineParser.Parse(args);
-
                 var package = commandLineParser.Arguments["package"][0];
-                var sourceFeed = commandLineParser.Arguments["source"][0];
-                var destinationFeed = commandLineParser.Arguments["destination"][0];
+                var sourceFeedName = commandLineParser.Arguments["source"][0];
+                var destinationFeedName = commandLineParser.Arguments["destination"][0];
                 var apiKey = commandLineParser.Arguments["apikey"][0];
 
-                var destinationPush = "https://www.myget.org/F/dh-test/api/v2/package";
-
-                var repositoryFactory = new Repository.RepositoryFactory();
+                // Get package sources from configs
+                var settings = Settings.LoadDefaultSettings(Assembly.GetExecutingAssembly().Location);
+                var sourceRepositoryProvider = new SourceRepositoryProvider(settings, Repository.Provider.GetCoreV3());
+                var packageSources = sourceRepositoryProvider.PackageSourceProvider.LoadPackageSources().ToArray();
+                var sourcePackageSource = packageSources.Single(s => s.Name == sourceFeedName);
+                var destinationPackageSource = packageSources.Single(s => s.Name == destinationFeedName);
 
                 // Source feed setup
-                var sourceRepository = repositoryFactory.GetCoreV3(sourceFeed, FeedType.HttpV3);
+                var sourceRepository = sourceRepositoryProvider.CreateRepository(sourcePackageSource,FeedType.HttpV3);
                 var sourceHttpSource = HttpSource.Create(sourceRepository);
                 var sourcePackagesFind = new RemoteV3FindPackageByIdResource(sourceRepository, sourceHttpSource);
 
                 // Destination feed setup
-                var destinationRepository = repositoryFactory.GetCoreV3(destinationFeed, FeedType.HttpV3);
+                var destinationRepository = sourceRepositoryProvider.CreateRepository(destinationPackageSource, FeedType.HttpV3);
                 var destinationHttpSource = HttpSource.Create(destinationRepository);
                 var destinationPackages =
                     new RemoteV3FindPackageByIdResource(destinationRepository, destinationHttpSource);
-                var packageUpdateResourceV3Provider = new PackageUpdateResourceV3Provider();
-                var updateResource =
-                    (PackageUpdateResource) (await packageUpdateResourceV3Provider.TryCreate(destinationRepository,
-                        CancellationToken.None)).Item2;
+                var updateResource = await destinationRepository.GetResourceAsync<PackageUpdateResource>();
 
                 var logger = new NullLogger();
 
