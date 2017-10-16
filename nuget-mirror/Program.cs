@@ -29,7 +29,7 @@ namespace nuget_mirror
                 var apiKey = commandLineParser.Arguments["apikey"][0];
 
                 // Get package sources from configs
-                var settings = Settings.LoadDefaultSettings(Assembly.GetExecutingAssembly().Location);
+                var settings = Settings.LoadDefaultSettings(Assembly.GetEntryAssembly().Location);
                 var sourceRepositoryProvider = new SourceRepositoryProvider(settings, Repository.Provider.GetCoreV3());
                 var packageSources = sourceRepositoryProvider.PackageSourceProvider.LoadPackageSources().ToArray();
                 var sourcePackageSource = packageSources.Single(s => s.Name == sourceFeedName);
